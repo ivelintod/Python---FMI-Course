@@ -1,44 +1,64 @@
 import collections
+import numbers
 
 
 class DunderProvider:
-
-    def __add__(self, other):
-        oper = Constant.operator_factory('+')
-        return Expression((self, oper, other))
-
-    def __radd__(self, other):
-        return self + other
-
-    def __sub__(self, other):
-        oper = Constant.operator_factory('-')
-        return Expression((self, oper, other))
-
-    def __rsub__(self, other):
-        return self + other
-
-    def __mul__(self, other):
-        oper = Constant.operator_factory('*')
-        return Expression((self, oper, other))
-
-    def __rmul__(self, other):
-        return self * other
-
-    def __truediv__(self, other):
-        oper = Constant.operator_factory('/')
-        return Expression((self, oper, other))
-
-    def __rtruediv__(self, other):
-        return self / other
-
-
-class Constant(DunderProvider):
 
     @staticmethod
     def operator_factory(symbol):
         oper_expr = 'Operator("{s}", lambda x, y: x {s} y)'.format(s=symbol)
         return eval(oper_expr)
 
+    def __add__(self, other):
+        oper = DunderProvider.operator_factory('+')
+        return Expression((self, oper, other))
+
+    def __radd__(self, other):
+        return self + other
+
+    def __sub__(self, other):
+        oper = DunderProvider.operator_factory('-')
+        return Expression((self, oper, other))
+
+    def __rsub__(self, other):
+        oper = DunderProvider.operator_factory('-')
+        return Expression((other, oper, self))
+
+    def __mul__(self, other):
+        oper = DunderProvider.operator_factory('*')
+        return Expression((self, oper, other))
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __truediv__(self, other):
+        oper = DunderProvider.operator_factory('/')
+        return Expression((self, oper, other))
+
+    def __rtruediv__(self, other):
+        oper = DunderProvider.operator_factory('/')
+        return Expression((other, oper, self))
+
+    def __floordiv__(self, other):
+        oper = DunderProvider.operator_factory('//')
+        return Expression((self, oper, other))
+
+    def __rfloordiv__(self, other):
+        oper = DunderProvider.operator_factory('//')
+        return Expression((other, oper, self))
+
+    def __mod__(self, other):
+        oper = DunderProvider.operator_factory('%')
+        return Expression((self, oper, other))
+
+    def __rmod__(self, other):
+        oper = DunderProvider.operator_factory('%')
+        return Expression((other, oper, self))
+
+
+class Constant(DunderProvider):
+
+    '''
     def customize(self):
         dunders = ['__add__', '__mul__', '__sub__', '__truediv__',
                    '__floordiv__', '__mod__', '__divmod__', '__pow__']
@@ -46,7 +66,7 @@ class Constant(DunderProvider):
 
         for d, o in zip(dunders, operators):
             Constant.__dict__[d] = Expression((constant.operator_factory(o)))
-
+    '''
     def __init__(self, value):
         self.__value = value
 
@@ -59,6 +79,9 @@ class Constant(DunderProvider):
         raise AttributeError('''Can't set new value
         for {} object'''.format(type(self).__name__))
 
+    def __str__(self):
+        return str(self.value)
+
     def evaluate(self, **variables):
         return self.value
 
@@ -67,6 +90,9 @@ class Variable(DunderProvider):
 
     def __init__(self, name):
         self.name = name
+
+    def __str__(self):
+        return self.name
 
     def evaluate(self, **variables):
         return variables[self.name]
@@ -87,6 +113,9 @@ class Operator:
         self.symbol, self.func = symbol, func
         self.objects.add(self)
 
+    def __str__(self):
+        return self.symbol
+
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
 
@@ -97,13 +126,27 @@ class Expression(DunderProvider):
         self.expression = list(expression)
         self._variable_names = set()
 
+    def stringify(self, expression):
+        for ind, exp in enumerate(expression):
+            if isinstance(exp, collections.Sequence):
+                expression[ind] = list(exp)
+                self.stringify(expression[ind])
+            else:
+                expression[ind] = str(expression[ind])
+
     def __str__(self):
-        res_str = ''
-        for exp in expression:
-            if isinstance(exp, Variable):
-                self._variable_names.add(exp.name)
-            elif isinstance(exp, collections.Sequence):
-                self.get_variable_names(exp)
+        str_ver = self.expression[:]
+        self.stringify(str_ver)
+        final_ver = str(str_ver)
+        while "'" in final_ver:
+            final_ver = final_ver.replace("'", '')
+        while "," in final_ver:
+            final_ver = final_ver.replace(",", '')
+        while "[" in final_ver:
+            final_ver = final_ver.replace("[", '(')
+        while "]" in final_ver:
+            final_ver = final_ver.replace("]", ')')
+        return final_ver
 
     def get_variable_names(self, expression):
         for exp in expression:
@@ -126,8 +169,10 @@ class Expression(DunderProvider):
                 operands.append(variables[el.name])
             elif isinstance(el, Constant):
                 operands.append(el.value)
-            elif isinstance(el, int):
+            elif isinstance(el, numbers.Number):
                 operands.append(el)
+            elif isinstance(el, Expression):
+                operands.append(self.evaluate_v2(el.expression, **variables))
         return oper(*operands)
 
     def evaluate_v2(self, expression, **variables):
@@ -143,10 +188,7 @@ class Expression(DunderProvider):
         return self.simplify(expression, **variables)
 
     def evaluate(self, **variables):
-        if not isinstance(self, Expression):
-            return Expression(tuple(self)).evaluate(**variables)
-        else:
-            return self.evaluate_v2(self.expression,  **variables)
+        return self.evaluate_v2(self.expression,  **variables)
 
 
 def create_constant(value):
@@ -182,4 +224,3 @@ print(expression.expression)
 expression = create_expression((x, plus, (y, times, twelve)))
 #print(expression.evaluate(x=5, y=2))
 print(expression.expression)
-
